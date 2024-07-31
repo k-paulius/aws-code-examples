@@ -1,5 +1,22 @@
 # AWS Python Code Examples
 
+## signin
+
+### `generate_federated_signin_url.py`
+- This script constructs a URL that gives you direct access to the AWS Management Console.
+- This method was the initial solution (circa 2012) for granting your federated users access to the AWS Management Console and pre-dates SAML/OIDC federation. In AWS documentation, it is commonly referred to as the "Custom Identity Broker" federation pattern.
+- Sing-In URL can only be generated using short-term AWS credentials retrieved from either `sts:AssumeRole` or `sts:GetFederationToken` API operations. This script calls `sts:AssumeRole` to acquire short-term credentials.
+- Usage:
+```bash
+./generate_federated_signin_url.py \
+    --role-name OrganizationAccountAccessRole \
+    --account-id 123456789012
+```
+
+- References:
+    - [Enable Single Sign On to the AWS Management Console | AWS News Blog](https://aws.amazon.com/blogs/aws/enable-single-sign-on-to-the-aws-management-console/)
+    - [Enabling custom identity broker access to the AWS console | AWS IAM](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_providers_enable-console-custom-url.html)
+
 ## sigv4
 Example code related to AWS Signature Version 4 generation
 
