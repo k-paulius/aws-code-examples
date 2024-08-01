@@ -14,34 +14,69 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import sys
 import argparse
 import urllib.parse
 import json
 import requests
 import boto3
+from botocore.exceptions import ClientError, NoCredentialsError, ProfileNotFound
 
-def main():
+
+def parse_args():
     parser = argparse.ArgumentParser(description='Construct a URL that gives federated users direct access to the AWS Management Console')
-    parser.add_argument('--profile', help='Use a specific profile from your credential file. If not given, then the default profile is used.')
-    parser.add_argument('--role-name', required=True, help='IAM role to assume.')
-    parser.add_argument('--account-id', required=True, help='AWS Account ID in which the role is located.')
+
+    chain = parser.add_argument_group('Credential Provider Chain')
+    chain.add_argument('--profile', help='Use a specific profile from your credential file. If not given, then the default profile is used.')
+    chain.add_argument('--role-name', help='IAM role to assume.')
+    chain.add_argument('--account-id', help='AWS Account ID in which the role is located.')
+
+    static = parser.add_argument_group('Static Credentials')
+    static.add_argument('--session-id', help='Access Key ID')
+    static.add_argument('--session-key', help='Secret Access Key')
+    static.add_argument('--session-token', help='Session Token')
     args = parser.parse_args()
 
-    session = boto3.Session(profile_name=args.profile)
-    sts_client = session.client('sts')
+    if not (
+        (args.role_name and args.account_id) or
+        (args.session_id and args.session_key and args.session_token)
+    ):
+        print("ERROR: You must provide either --role-name and --account-id or --session-id, --session-key, and --session-token")
+        sys.exit()
+    return args
 
-    # Assume AWS IAM Role
-    response = sts_client.assume_role(
-        RoleArn=f'arn:aws:iam::{args.account_id}:role/{args.role_name}',
-        RoleSessionName='FederatedURLGenerator',
-        DurationSeconds=3600
-    )
+
+def main():
+    args = parse_args()
+
+    if args.session_id:
+        session_id = args.session_id
+        session_key = args.session_key
+        session_token = args.session_token
+    else:
+        try:
+            session = boto3.Session(profile_name=args.profile)
+            sts_client = session.client('sts')
+
+            # Assume AWS IAM Role
+            response = sts_client.assume_role(
+                RoleArn=f'arn:aws:iam::{args.account_id}:role/{args.role_name}',
+                RoleSessionName='FederatedURLGenerator',
+                DurationSeconds=3600
+            )
+        except (ClientError, NoCredentialsError, ProfileNotFound) as e:
+            print(f"ERROR: {e}")
+            sys.exit()
+
+        session_id = response['Credentials']['AccessKeyId']
+        session_key = response['Credentials']['SecretAccessKey']
+        session_token = response['Credentials']['SessionToken']
 
     # Format temporary credentials into JSON
     session_string = {
-        'sessionId': response['Credentials']['AccessKeyId'],
-        'sessionKey': response['Credentials']['SecretAccessKey'],
-        'sessionToken': response['Credentials']['SessionToken']
+        'sessionId': session_id,
+        'sessionKey': session_key,
+        'sessionToken': session_token
     }
 
     # Call the AWS federation endpoint and supply the temporary security credentials to request a sign-in token
